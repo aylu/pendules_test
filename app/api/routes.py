@@ -6,7 +6,8 @@ from sqlalchemy import Select, select
 from sqlalchemy.orm import Session
 
 from app.api.auth import require_api_key
-from app.api.schemas import MessageListOut, MessageOut, PaginationOut
+from app.api.schemas import MessageListOut, MessageOut
+from app.core.config import settings
 from app.db.models import DiscordMessage
 from app.db.session import get_db
 
@@ -27,8 +28,8 @@ def _parse_datetime(name: str, value: str | None) -> datetime | None:
 
 @router.get("/messages", response_model=MessageListOut)
 def list_messages(
-    guild_id: int,
-    channel_id: int,
+    guild_id: int | None = None,
+    channel_id: int | None = None,
     from_ts: str | None = Query(default=None, alias="from"),
     to_ts: str | None = Query(default=None, alias="to"),
     cursor: str | None = None,
@@ -36,6 +37,24 @@ def list_messages(
     include_deleted: bool = False,
     db: Session = Depends(get_db),
 ):
+    # valeurs par défaut depuis la config si non passées en query
+    if guild_id is None:
+        if settings.discord_guild_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="guild_id manquant et DISCORD_GUILD_ID non configuré",
+            )
+        guild_id = settings.discord_guild_id
+
+    if channel_id is None:
+        channel_ids = settings.channel_id_list
+        if not channel_ids:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="channel_id manquant et DISCORD_CHANNEL_IDS non configuré",
+            )
+        channel_id = channel_ids[0]  # premier salon par défaut
+
     from_dt = _parse_datetime("from", from_ts)
     to_dt = _parse_datetime("to", to_ts)
 
@@ -43,6 +62,7 @@ def list_messages(
         select(DiscordMessage)
         .where(DiscordMessage.guild_id == guild_id)
         .where(DiscordMessage.channel_id == channel_id)
+        .where(DiscordMessage.content.contains(f"<@&{1469827056547401838}>"))
         .order_by(DiscordMessage.created_at.asc(), DiscordMessage.message_id.asc())
     )
 
@@ -54,7 +74,6 @@ def list_messages(
         stmt = stmt.where(DiscordMessage.deleted.is_(False))
     if cursor:
         stmt = stmt.where(DiscordMessage.message_id > cursor)
-
     rows = db.execute(stmt.limit(limit + 1)).scalars().all()
     has_next = len(rows) > limit
     data_rows = rows[:limit]
@@ -65,20 +84,13 @@ def list_messages(
         data=[
             MessageOut(
                 message_id=m.message_id,
-                guild_id=m.guild_id,
-                channel_id=m.channel_id,
-                author_id=m.author_id,
                 author_name=m.author_name,
                 content=m.content,
                 created_at=m.created_at,
-                edited_at=m.edited_at,
-                deleted=m.deleted,
-                attachment_count=m.attachment_count,
-                embed_count=m.embed_count,
+                edited_at=m.edited_at
             )
             for m in data_rows
-        ],
-        pagination=PaginationOut(next_cursor=next_cursor, limit=limit),
+        ]
     )
 
 
@@ -86,7 +98,11 @@ def list_messages(
 def get_message(message_id: str, db: Session = Depends(get_db)):
     message = db.get(DiscordMessage, message_id)
     if message is None:
-        raise HTTPException(status_code=404, detail="Message not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Message not found",
+        )
+
     return MessageOut(
         message_id=message.message_id,
         guild_id=message.guild_id,

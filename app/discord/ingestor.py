@@ -18,6 +18,23 @@ intents.guilds = True
 intents.messages = True
 intents.message_content = True
 
+def message_to_dict(message: discord.Message) -> dict:
+    return {
+        "id": message.id,
+        "channel_id": message.channel.id,
+        "guild_id": message.guild.id if message.guild else None,
+        "author": {
+            "id": message.author.id,
+            "name": str(message.author),
+        },
+        "content": message.content,
+        "created_at": message.created_at.isoformat(),
+        "edited_at": message.edited_at.isoformat() if message.edited_at else None,
+        "attachments": [a.to_dict() for a in message.attachments],
+        "embeds": [e.to_dict() for e in message.embeds],
+    }
+
+
 
 class DiscordIngestor(discord.Client):
     async def on_ready(self):
@@ -46,7 +63,7 @@ class DiscordIngestor(discord.Client):
             entity.deleted = False
             entity.attachment_count = len(message.attachments)
             entity.embed_count = len(message.embeds)
-            entity.raw_json = json.dumps(message.to_dict(), default=str)
+            entity.raw_json = json.dumps(message_to_dict(message), default=str)
 
             db.merge(entity)
             db.commit()
