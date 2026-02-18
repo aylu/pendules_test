@@ -36,6 +36,24 @@ def list_messages(
     include_deleted: bool = False,
     db: Session = Depends(get_db),
 ):
+    # valeurs par défaut depuis la config si non passées en query
+    if guild_id is None:
+        if settings.discord_guild_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="guild_id manquant et DISCORD_GUILD_ID non configuré",
+            )
+        guild_id = settings.discord_guild_id
+
+    if channel_id is None:
+        channel_ids = settings.channel_id_list
+        if not channel_ids:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="channel_id manquant et DISCORD_CHANNEL_IDS non configuré",
+            )
+        channel_id = channel_ids[0]  # premier salon par défaut
+
     from_dt = _parse_datetime("from", from_ts)
     to_dt = _parse_datetime("to", to_ts)
 
