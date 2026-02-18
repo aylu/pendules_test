@@ -12,3 +12,4 @@ class MessageOut(BaseModel):
 
 class MessageListOut(BaseModel):
     data: list[MessageOut]
+    next_cursor: str | None = None

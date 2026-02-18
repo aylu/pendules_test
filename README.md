@@ -48,7 +48,7 @@ DISCORD_CHANNEL_IDS=123456789012345678,987654321098765432
 ### 1) API
 
 ```bash
-./scripts/run_api.sh
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 - Healthcheck: `GET /health`
@@ -57,13 +57,13 @@ DISCORD_CHANNEL_IDS=123456789012345678,987654321098765432
 ### 2) Ingestion temps réel
 
 ```bash
-./scripts/run_ingestor.sh
+python -m app.discord.ingestor
 ```
 
 ### 3) Backfill historique (optionnel au démarrage)
 
 ```bash
-python scripts/backfill.py
+python -m scripts.backfill
 ```
 
 ## Endpoints API

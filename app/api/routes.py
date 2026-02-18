@@ -32,29 +32,10 @@ def list_messages(
     channel_id: int | None = None,
     from_ts: str | None = Query(default=None, alias="from"),
     to_ts: str | None = Query(default=None, alias="to"),
-    cursor: str | None = None,
     limit: int = Query(default=100, ge=1, le=500),
     include_deleted: bool = False,
     db: Session = Depends(get_db),
 ):
-    # valeurs par défaut depuis la config si non passées en query
-    if guild_id is None:
-        if settings.discord_guild_id is None:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="guild_id manquant et DISCORD_GUILD_ID non configuré",
-            )
-        guild_id = settings.discord_guild_id
-
-    if channel_id is None:
-        channel_ids = settings.channel_id_list
-        if not channel_ids:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="channel_id manquant et DISCORD_CHANNEL_IDS non configuré",
-            )
-        channel_id = channel_ids[0]  # premier salon par défaut
-
     from_dt = _parse_datetime("from", from_ts)
     to_dt = _parse_datetime("to", to_ts)
 
@@ -72,13 +53,9 @@ def list_messages(
         stmt = stmt.where(DiscordMessage.created_at <= to_dt)
     if not include_deleted:
         stmt = stmt.where(DiscordMessage.deleted.is_(False))
-    if cursor:
-        stmt = stmt.where(DiscordMessage.message_id > cursor)
     rows = db.execute(stmt.limit(limit + 1)).scalars().all()
-    has_next = len(rows) > limit
     data_rows = rows[:limit]
 
-    next_cursor = data_rows[-1].message_id if has_next and data_rows else None
 
     return MessageListOut(
         data=[
@@ -87,7 +64,7 @@ def list_messages(
                 author_name=m.author_name,
                 content=m.content,
                 created_at=m.created_at,
-                edited_at=m.edited_at
+                edited_at=m.edited_at,
             )
             for m in data_rows
         ]
@@ -105,14 +82,8 @@ def get_message(message_id: str, db: Session = Depends(get_db)):
 
     return MessageOut(
         message_id=message.message_id,
-        guild_id=message.guild_id,
-        channel_id=message.channel_id,
-        author_id=message.author_id,
         author_name=message.author_name,
         content=message.content,
         created_at=message.created_at,
-        edited_at=message.edited_at,
-        deleted=message.deleted,
-        attachment_count=message.attachment_count,
-        embed_count=message.embed_count,
+        edited_at=message.edited_at
     )
